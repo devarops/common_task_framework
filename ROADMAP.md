@@ -1,16 +1,16 @@
-# **Common Task Framework (CTF) – System Design & Roadmap**
+# **Common Task Framework (CTF) - System Design & Roadmap**
 
 ## 1. **Purpose**
-The Common Task Framework evaluates and ranks LLM-based software/data analysis agents by pitting them against each other in structured tasks. It uses a multi-LLM pipeline: **Spec → Participant → Orchestrator → Referee → Orchestrator → ELO ranking**.
+The Common Task Framework evaluates and ranks LLM-based software/data analysis agents by pitting them against each other in structured tasks. It uses a pipeline: **Spec → Participant → Orchestrator → [hidden test gate] → Referee → Orchestrator → ELO ranking**.
 
 ## 2. **Core Components**
 
 | Component | Role | Implementation |
 |-----------|------|----------------|
-| **Spec** | A structured Markdown document describing a task. | Human-written or auto-generated. Contains required sections: `# Specification`, `## Context`, `## Task`, `## Evaluation Criteria`. Optional sections allowed. |
+| **Spec** | A structured Markdown document describing a task. | Human-written or auto-generated. Contains required sections: `# Specification`, `## Context`, `## Task`, `## Interface`, `## Evaluation Criteria`. The Evaluation Criteria section lists each quality aspect with a description and includes a JSON response template for referees. The document uses third-person language ("the participant", "the referee") so it can be read by both audiences. Optional sections allowed. |
 | **Participant LLM** | An LLM that receives the Spec (and later feedback) and produces a solution. | Any LLM, called via API. Exactly two per match, selected from a pool via roulette wheel (probability ∝ ELO). |
-| **Referee LLM** | An LLM that evaluates a participant’s output against the Spec. Returns JSON with numeric scores and prose feedback. | At least three per match. Each referee independently produces per‑aspect scores. |
-| **Orchestrator** | A deterministic program that coordinates the flow: validates inputs, sends prompts, aggregates referee scores, manages match outcomes, and communicates with the external ELO API. | No LLM; pure logic (Python). |
+| **Referee LLM** | An LLM that evaluates a participant's solution against the quality aspects listed in the Spec's Evaluation Criteria. Only invoked if the solution passes the hidden test gate. Returns JSON with numeric scores and prose feedback. | At least three per match. Each referee independently produces per‑aspect scores. |
+| **Orchestrator** | A deterministic program that coordinates the flow: validates inputs, runs hidden tests as a PASS/FAIL gate, sends prompts to referees (only for passing solutions), aggregates referee scores, manages match outcomes, and communicates with the external ELO API. | No LLM; pure logic (Python). |
 | **External ELO API** | A separate service that maintains participant ELO ratings, selects two participants per match (roulette wheel), and updates ratings after each match. | Web service (REST or gRPC). |
 
 ## 3. **End-to-End Workflow**
@@ -26,17 +26,32 @@ while max(final_score_a, final_score_b) < threshold and i < N:
     i += 1
 ```
 
-### **3.1 Parameters**
+### **3.1 Directory Layout**
+
+Each challenge lives under `specs/<challenge_name>/` with the following structure:
+
+```
+specs/my_challenge/
+├── SPEC.md            # The specification document
+├── A/                 # Workspace for participant A (solution.py goes here)
+├── B/                 # Workspace for participant B (solution.py goes here)
+└── tests/
+    └── test_*.py      # Hidden test files (never visible to participants)
+```
+
+Hidden test files follow pytest conventions and import the solution by its expected name (e.g., `from solution import solve`). The orchestrator saves each participant's output as `solution.py` in their workspace directory and runs `pytest tests/` from the challenge root.
+
+### **3.2 Parameters**
 | Parameter | Description | Default |
 |-----------|-------------|--------|
 | `N` | Maximum number of matches per spec | 5 |
 | `threshold` | Score target that stops the loop early | 0.90 |
 
-### **3.2 Match Loop**
+### **3.3 Match Loop**
 
 Each iteration of the loop is a self-contained match between two participants.
 
-#### **3.2.1 Pairing**
+#### **3.3.1 Pairing**
 The orchestrator sends a **GET /match/pair** request to the external ELO API. The API returns a fresh pair selected by roulette wheel based on current ELO:
 ```json
 {
@@ -45,32 +60,47 @@ The orchestrator sends a **GET /match/pair** request to the external ELO API. Th
 }
 ```
 
-#### **3.2.2 Seat Carryover (i > 0 only)**
+#### **3.3.2 Seat Carryover (i > 0 only)**
 The orchestrator maintains a seat for each side (A and B) across iterations. For each seat, it stores the most recent solution and its aggregated feedback. When a new participant occupies a seat, they receive:
 - The **previous occupant's solution** from the last match that seat participated in.
 - The **aggregated feedback** for that solution.
 
 This gives the new participant context on what worked and what didn't, even though they weren't the one who produced the earlier solution.
 
-#### **3.2.3 Participation**
+#### **3.3.3 Participation**
 - **i = 0 (first match on this spec)**: The orchestrator sends the plain Spec Markdown to both participants.
 - **i > 0**: The orchestrator sends the Spec Markdown **plus the seat's previous solution and aggregated feedback** to each participant.
-- Each participant returns a solution (code in a code fence, plain text, etc.).
+- Each participant returns a solution. The orchestrator extracts the first Python code fence (````python...````) and saves it as `solution.py` in the participant's workspace directory (`A/` or `B/`).
 
-#### **3.2.4 Referee Evaluation**
-For each participant, the orchestrator sends **the Spec + participant output** to each referee LLM (≥3 referees). Each referee returns a JSON object conforming to the strict schema (see §4). The orchestrator validates each response against the schema; invalid responses are discarded or retried.
+#### **3.3.4 Hidden Test Gate**
+Before invoking referees, the orchestrator runs the participant's `solution.py` against the hidden test suite:
 
-#### **3.2.5 Aggregation**
-For each participant:
+```bash
+cd specs/my_challenge
+pytest tests/ --tb=short --no-header -q
+```
+
+- **If any test fails** → the solution is discarded. The participant's `final_score` is set to **0.0**. No referees are called. The match proceeds to outcome determination.
+- **If all tests pass** → the orchestrator proceeds to referee evaluation.
+
+This is the Chinese wall: participants never see the hidden test cases, mirroring CodeWars kata conventions.
+
+#### **3.3.5 Referee Evaluation (only if hidden tests pass)**
+For each participant whose solution passed the hidden tests, the orchestrator sends **the Spec + the participant's solution code** to each referee LLM (≥3 referees). Each referee returns a JSON object conforming to the strict schema (see §4), scoring each aspect listed in the Spec's Evaluation Criteria. The orchestrator validates each response against the schema; invalid responses are discarded or retried.
+
+#### **3.3.6 Aggregation**
+For each participant whose solution passed the hidden tests:
 1. Compute the **median** of the referees' per‑aspect `score` values.
 2. Compute the `final_score` as the **median** of the median aspect scores.
 3. Collect all `rationale` strings for each aspect into an array (ordered by referee submission).
 4. Collect all `recommendation` strings for each aspect into an array (ordered).
 5. Build aggregated **feedback JSON** (see §4.2).
 
-The orchestrator stores the solution and its aggregated feedback in the participant's seat for potential carryover to the next iteration.
+For participants whose solution failed the hidden tests, `final_score` is **0.0** and no feedback JSON is generated.
 
-#### **3.2.6 Outcome & ELO Update**
+The orchestrator stores the solution and its aggregated feedback (if any) in the participant's seat for potential carryover to the next iteration.
+
+#### **3.3.7 Outcome & ELO Update**
 1. The orchestrator determines the match result:
    - **Draw**: `abs`(`final_score_a` - `final_score_b`) < `epsilon`  (default: `epsilon` = 0.05).
    - **A wins**: `final_score_a` > `final_score_b` by more than epsilon.
@@ -85,13 +115,13 @@ The orchestrator stores the solution and its aggregated feedback in the particip
    ```
 3. The ELO API updates the ratings (standard ELO or Glicko) and responds with `200 OK`.
 
-#### **3.2.7 Loop Condition**
+#### **3.3.8 Loop Condition**
 After the ELO update, the orchestrator checks:
 - If `max(final_score_a, final_score_b) >= threshold` → **exit loop** (spec mastered).
 - If `i == N - 1` → **exit loop** (max matches reached; spec not mastered).
 - Otherwise → `i += 1` and continue.
 
-### **3.3 Post-Loop**
+### **3.4 Post-Loop**
 When the loop exits, the orchestrator reports to the user:
 - Which participants reached the threshold (if any).
 - The history of matches, solutions, and ELO changes.
@@ -126,6 +156,7 @@ All matches for previous specs remain in the ELO history, so participants carry 
   }
 }
 ```
+- The `aspect` values must correspond to the aspects listed in the Spec's `## Evaluation Criteria` section.
 - `score` must be formatted to 2 decimal places (`%.2f`).
 - `rationale`: Prose explanation justifying the score.
 - `recommendation`: Prose suggestion for improvement.
@@ -138,7 +169,7 @@ All matches for previous specs remain in the ELO history, so participants carry 
   "final_score": 0.78,
   "scores": [
     {
-      "aspect": "functional_correctness",
+      "aspect": "correctness",
       "score": 0.83,
       "rationales": ["Ref 1: ...", "Ref 2: ..."],
       "recommendations": ["Ref 1: ...", "Ref 2: ..."]
@@ -146,9 +177,10 @@ All matches for previous specs remain in the ELO history, so participants carry 
   ]
 }
 ```
-- `final_score`: median of all aspect medians (rounded to 2 decimal places) calculated by the orchestrator.
+- `final_score`: median of all aspect medians (rounded to 2 decimal places) calculated by the orchestrator. Set to **0.0** if the solution failed the hidden test gate.
 - Per‑aspect `score`: median of referee scores for that aspect.
 - `rationales` and `recommendations`: arrays of strings, in referee submission order.
+- If the solution failed the hidden tests, no feedback JSON is generated (only `final_score: 0.0` is recorded).
 - The next participant in that seat (A or B) receives this feedback JSON along with the Spec in the next match iteration.
 
 ### **4.3 ELO API Exchange Schemas**
@@ -178,32 +210,34 @@ All matches for previous specs remain in the ELO history, so participants carry 
 |----------|---------------------|
 | External ELO API unreachable | Retry up to 3 times with exponential backoff. If still fails, log error and continue match. |
 | Only one participant available in pool | Ask for a new pairing. Retry up to 3 times. If still fails, log the error, ask the single participant to solve the task, and skip the ELO update. |
-| Referee JSON fails schema validation | Discard that referee’s response. If fewer than 3 valid responses remain, request another referee. |
+| Referee JSON fails schema validation | Discard that referee's response. If fewer than 3 valid responses remain, request another referee. |
 | Participant fails to produce output after N retries (e.g., timeout) | Assign a default `final_score` of 0.0 for that match. |
-| Participant outputs invalid/malformed format (e.g., no code block) | Orchestrator may attempt to parse leniently, or assign 0.0. Define strict parsing rules. |
+| Participant outputs invalid/malformed format (e.g., no code fence) | Orchestrator may attempt to extract code leniently, or assign `final_score` 0.0. |
+| Participant solution fails hidden tests | Assign `final_score` of 0.0. No referees are called. The match proceeds to outcome determination. |
 | Match results are equal (tie) or `final_score` difference is within a small epsilon (e.g., 0.05) | ELO treats as draw: both get appropriate rating change. Orchestrator sends `"result": "draw"` to ELO API. |
 | Spec is missing required sections | Reject spec before starting match. Validator in orchestrator. |
 
 ## 6. **Implementation Roadmap**
 
 ### **Phase 1 – Core Orchestrator & Validation**
-- [ ] Implement **Spec parser** that extracts `Context`, `Task`, `Evaluation Criteria` from Markdown.
+- [ ] Implement **Spec parser** that extracts `Context`, `Task`, `Interface`, `Evaluation Criteria` from Markdown.
+- [ ] Implement **hidden test executor**: run `pytest tests/` against the participant's `solution.py`, capture PASS/FAIL.
 - [ ] Implement **referee JSON schema validator** (use `jsonschema` library).
 - [ ] Implement **median aggregation** logic.
 - [ ] Build **basic orchestrator** able to run a single match with fixed participant IDs.
 
-### **Phase 2 – LLM Integrations**
-- [ ] **Participant wrapper**: Call any LLM API, pass Spec, receive output.
-- [ ] **Referee wrapper**: Call any LLM API, pass Spec + participant output, parse returned JSON.
+### **Phase 2 - LLM Integrations**
+- [ ] **Participant wrapper**: Call any LLM API, pass Spec, extract first Python code fence from output, save as `solution.py`.
+- [ ] **Referee wrapper**: Call any LLM API, pass Spec + participant solution code, parse returned JSON.
 - [ ] **Retry logic** for LLM failures.
 
-### **Phase 3 – ELO API**
-- [ ] Build **external ELO service** (minimal: FastAPI/Express + SQLite or in‑memory).
-- [ ] Implement **roulette‑wheel selection**.
-- [ ] Implement **standard ELO update** (K‑factor configurable).
+### **Phase 3 - ELO API**
+- [ ] Build **external ELO service** (minimal: FastAPI/Express + SQLite or in-memory).
+- [ ] Implement **roulette-wheel selection**.
+- [ ] Implement **standard ELO update** (K-factor configurable).
 - [ ] Implement `/match/pair` and `/match/result` endpoints.
 
-### **Phase 4 – Orchestrator ↔ ELO API Integration**
+### **Phase 4 - Orchestrator ↔ ELO API Integration**
 - [ ] Add HTTP client calls in orchestrator for pairing and result submission.
 - [ ] Handle API errors.
 
@@ -211,8 +245,9 @@ All matches for previous specs remain in the ELO history, so participants carry 
 - [ ] Add **feedback JSON assembly** (per‑aspect medians + arrays of rationales and recommendations).
 - [ ] Implement **N‑match loop** (default N=5 or configurable) with seat-based carryover.
 - [ ] Ensure participant solution and feedback are stored per seat for carryover to the next match.
+- [ ] Handle the hidden-test-fail case: score = 0.0, no feedback JSON, no referee invocation.
 
-### **Phase 6 – Monitoring & Observability**
+### **Phase 6 - Monitoring & Observability**
 - [ ] Log all matches, referee responses, aggregations.
 - [ ] Track ELO evolution over time.
 - [ ] Dashboard (optional).
@@ -226,3 +261,6 @@ All matches for previous specs remain in the ELO history, so participants carry 
 | The ELO API is stateless but maintains persistence. | Can be same machine as orchestrator or separate. |
 | Participants are LLMs that accept prompts and return text. | No interactive collaboration; they work independently. |
 | Referee JSON `score` fields are exactly `%.2f`. | Orchestrator can round if needed. |
+| Hidden tests can be run deterministically by the orchestrator. | Tests are pytest-compatible, import the solution by name, and run in an isolated subprocess. |
+| Participant output contains a single Python code fence. | The orchestrator extracts the first ` ```python ` block and saves it as `solution.py`. |
+| The Spec uses third-person language to address both participants and referees. | No ambiguous "you" — the document refers to "the participant" and "the referee". |
