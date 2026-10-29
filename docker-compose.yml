@@ -1,0 +1,9 @@
+services:
+  devarops:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: evaristor/common_task_framework:latest
+    command: bash
+    volumes:
+      - $PWD:/workdir

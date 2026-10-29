@@ -1,0 +1,324 @@
+#:schema https://qed.skovlund.dev/spec.schema.json
+
+name = "common_task_framework"
+
+# The behavioral contract. Every criterion is written now; unimplemented behavior
+# carries skip = "Not implemented". Land the test, then delete the skip line.
+
+[[criteria]]
+description = """
+Spec parser — the document yields its Context, Task, Interface, and Evaluation
+Criteria sections for use as a prompt and as referee instructions.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'spec_parser'"
+
+[[criteria]]
+description = """
+Spec parser — a document missing any required section is rejected before pairing.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'spec_missing_section'"
+
+[[criteria]]
+description = """
+Spec parser — every aspect scored by referees is named in the Evaluation Criteria
+section, and no referee may score an aspect absent from it.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'spec_aspects'"
+
+[[criteria]]
+description = """
+Spec text — the document addresses "the participant" and "the referee" in third
+person and never uses "you".
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'spec_third_person'"
+
+[[criteria]]
+description = """
+Challenge layout — a challenge lives at specs/<name>/ with SPEC.md, a workspace for
+each seat, and a tests/ directory.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'challenge_layout'"
+
+[[criteria]]
+description = """
+Challenge layout — hidden tests import the solution by the name documented in the
+Interface section.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'challenge_solution_import'"
+
+[[criteria]]
+description = """
+Participation — the first match on a spec sends the spec text verbatim to both
+participants, without a prior solution or feedback.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'match_first_prompt'"
+
+[[criteria]]
+description = """
+Participation — later matches add the seat's previous solution and its aggregated
+feedback to the spec text.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'match_carryover'"
+
+[[criteria]]
+description = """
+Participation — the first Python code fence in a reply is saved as the seat's
+solution.py.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'match_code_fence'"
+
+[[criteria]]
+description = """
+Participation — a reply with no code fence scores 0.0 for that match.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'match_no_code_fence'"
+
+[[criteria]]
+description = """
+Participation — participants are called through a text-in, text-out API and never
+collaborate interactively.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'participant_text_interface'"
+
+[[criteria]]
+description = """
+Hidden gate — pytest runs against tests/ from the challenge root, in an isolated
+subprocess, with the seat's solution on the import path.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'gate_runs_pytest'"
+
+[[criteria]]
+description = """
+Hidden gate — any failing test scores 0.0 and no referee is invoked.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'gate_failure'"
+
+[[criteria]]
+description = """
+Hidden gate — a solution that passes every test proceeds to referee evaluation.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'gate_pass'"
+
+[[criteria]]
+description = """
+Hidden gate — test files are never included in a participant prompt or in feedback.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'gate_isolation'"
+
+[[criteria]]
+description = """
+Referees — at least three referees score each passing solution independently.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'referee_count'"
+
+[[criteria]]
+description = """
+Referees — a reply that fails schema validation is discarded and another referee is
+asked until three valid scores remain.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'referee_invalid_json'"
+
+[[criteria]]
+description = """
+Referees — a score outside 0 to 1, or an aspect absent from the spec, is rejected.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'referee_score_range'"
+
+[[criteria]]
+description = """
+Aggregation — each aspect score is the median of the referee scores for that aspect,
+rounded to two decimals.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'aggregation_aspect_median'"
+
+[[criteria]]
+description = """
+Aggregation — the final score is the median of the aspect medians.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'aggregation_final_median'"
+
+[[criteria]]
+description = """
+Aggregation — rationale and recommendation arrays keep referee submission order.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'aggregation_feedback_order'"
+
+[[criteria]]
+description = """
+Aggregation — a solution that failed the gate records 0.0 and produces no feedback.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'aggregation_gate_failure'"
+
+[[criteria]]
+description = """
+Outcome — a score difference below 0.05 is a draw; otherwise the higher score wins.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'outcome_draw'"
+
+[[criteria]]
+description = """
+Outcome — the result request carries participant_a, participant_b, and a result of
+a, b, or draw.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'outcome_payload'"
+
+[[criteria]]
+description = """
+Outcome — the orchestrator sends an outcome and never computes or sends a rating
+delta.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'outcome_rating'"
+
+[[criteria]]
+description = """
+Pairing — the pair response returns two distinct participants, selected with
+probability proportional to rating.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'pairing_roulette'"
+
+[[criteria]]
+description = """
+Loop — a spec stops after a participant reaches 0.90 or after five matches,
+whichever comes first.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'loop_threshold'"
+
+[[criteria]]
+description = """
+Loop — each seat keeps its last solution and aggregated feedback across iterations.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'loop_seats'"
+
+[[criteria]]
+description = """
+Resilience — an unreachable rating service is retried three times with exponential
+backoff, then the match continues.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'resilience_elo'"
+
+[[criteria]]
+description = """
+Resilience — a pool with one participant is retried three times, then that
+participant solves alone and no rating is sent.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'resilience_single_participant'"
+
+[[criteria]]
+description = """
+Resilience — a participant that produces no output after the retry limit scores
+0.0 for that match.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'resilience_timeout'"
+
+[[criteria]]
+description = """
+Reporting — a finished run reports the matches, solutions, scores, and rating
+changes, and names any participant that reached the threshold. The run then waits
+for inspection, a revised spec, a lower threshold, or a stop.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'post_loop_report'"
+
+[[criteria]]
+description = """
+Implementation — the orchestrator is Bash/Shell and makes no LLM calls of its own.
+"""
+skip = "Not implemented"
+[criteria.verify]
+type = "command"
+run = "pytest tests/ -k 'orchestrator_shell'"
