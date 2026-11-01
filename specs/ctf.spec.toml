@@ -1,4 +1,4 @@
-#:schema https://qed.skovlund.dev/spec.schema.json
+#:schema https://raw.githubusercontent.com/tskovlund/qed/main/docs/spec.schema.json
 
 name = "common_task_framework"
 
