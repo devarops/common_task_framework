@@ -15,7 +15,7 @@ host; python3 and pytest are present, so the suite also runs directly.
 - `docker compose run --rm devarops make check` — black, flake8, mypy at 100 columns.
 - The compose volume mounts the repo at `/workdir`, so paths resolve from the repo
   root.
-- Container name: `common_task_framework_ci`.
+- Container name: `common_task_framework_dev`.
 
 ## Toolchain
 
